@@ -1,6 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column } from "typeorm"
+import { Entity, PrimaryGeneratedColumn, Column, JoinColumn, OneToOne, ManyToOne, ManyToMany } from "typeorm"
 import { CreateStudentRollStateInput, UpdateStudentRollStateInput } from "../interface/student-roll-state.interface"
-
 @Entity()
 export class StudentRollState {
   @PrimaryGeneratedColumn()
@@ -15,6 +14,7 @@ export class StudentRollState {
   @Column()
   state: string
 
+
   public prepareToCreate(input: CreateStudentRollStateInput) {
     this.state = input.state
     this.student_id = input.student_id
@@ -23,7 +23,14 @@ export class StudentRollState {
 
   public prepareToUpdate(input: UpdateStudentRollStateInput) {
     if (input.state !== undefined) this.state = input.state
-    if (input.student_id !== undefined) this.student_id = input.student_id
-    if (input.roll_id !== undefined) this.roll_id = input.roll_id
+    if (input.student_id !== undefined) {
+      this.student_id = input.student_id
+    }
+    if (input.roll_id !== undefined) {
+      this.roll_id = input.roll_id
+    }
   }
 }
+
+
+

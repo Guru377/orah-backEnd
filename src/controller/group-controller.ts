@@ -1,12 +1,17 @@
 import { NextFunction, Request, Response } from "express"
-import { getRepository } from "typeorm"
+import { Between, getConnection, getRepository } from "typeorm"
 import { Group } from "../entity/group.entity"
 import { CreateGroupInput, UpdateGroupInput } from "../interface/group.interface"
 import { GroupStudent } from "../entity/group-student.entity"
 import { Roll } from "../entity/roll.entity"
 import { StudentRollState } from "../entity/student-roll-state.entity"
+var subWeeks = require('date-fns/subWeeks')
+import { CreateGroupStudentInput } from "../interface/group-student.interface"
+import { format, compareAsc } from 'date-fns'
+export const BeforeDate = (date: Date, weeks: Number) => Between(subWeeks(date, weeks), date);
 
 export class GroupController {
+  //  private connection = await createConnection()
 
   private groupRepository = getRepository(Group)
   private groupStudentRepository = getRepository(GroupStudent)
@@ -27,16 +32,12 @@ export class GroupController {
     // Add a Group
 
     const { body: params } = request
-
     const createGroupInput: CreateGroupInput = {
       name: params.name,
       number_of_weeks: params.number_of_weeks,
-      roll_states: params.roll_states,
+      roll_states: params.roll_states.join(","),
       incidents: params.incidents,
-      ltmt: params.incidents,
-      run_at: params.run_at,
-      student_count: params.student_count
-
+      ltmt: params.ltmt
     }
     const group = new Group()
     group.prepareToCreate(createGroupInput)
@@ -89,11 +90,79 @@ export class GroupController {
 
   async runGroupFilters(request: Request, response: Response, next: NextFunction) {
     // Task 2:
+    const { body: params } = request
 
-    // 1. Clear out the groups (delete all the students from the groups)
     await this.groupStudentRepository.createQueryBuilder().delete().execute()
-    // 2. For each group, query the student rolls to see which students match the filter for the group
-    return this.rollRepository.createQueryBuilder("SELECT * FROM roll WHERE completed_at < '2020-10-06'").execute()
-    // 3. Add the list of students that match the filter to the group
+    let groups = await this.groupRepository.find();
+    for (let i = 0; i < groups.length; i++) {
+
+      const createGroupInput: CreateGroupInput = {
+        name: groups[i].name,
+        number_of_weeks: groups[i].number_of_weeks,
+        roll_states: groups[i].roll_states,
+        incidents: groups[i].incidents,
+        ltmt: groups[i].ltmt
+      }
+      var result = await this.exeGroupFilterQuery(createGroupInput)
+
+      const updateGroupInput: UpdateGroupInput = {
+        id: groups[i].id,
+        name: groups[i].name,
+        number_of_weeks: groups[i].number_of_weeks,
+        roll_states: groups[i].roll_states,
+        incidents: groups[i].incidents,
+        ltmt: groups[i].ltmt,
+        run_at: new Date(),
+        student_count: result.length
+      }
+      let group = new Group()
+      group.prepareToUpdate(updateGroupInput)
+      await this.groupRepository.save(group)
+
+      for (let j = 0; j < result.length; j++) {
+
+        const createStudentRollStateInput: CreateGroupStudentInput = {
+          group_id: groups[i].id,
+          student_id: result[j].srs_student_id,
+          incident_count: result[j].student_incident_count
+        }
+        await this.groupStudentRepository.save(createStudentRollStateInput);
+
+      }
+    }
+
+    return await this.groupStudentRepository.find()
+  }
+
+
+  async exeGroupFilterQuery(params) {
+    var condition;
+    if (params.ltmt === ">") {
+      condition = 's.student_incident_count >= :incident_count'
+    } else {
+      condition = 's.student_incident_count <= :incident_count'
+    }
+    var today = new Date();
+    var lastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (params.number_of_weeks * 7));
+
+    let query = await this.studentRollStateRepository.createQueryBuilder()
+      .select("s.srs_student_id").addSelect("s.student_incident_count")
+      .from(subQuery => {
+        return subQuery.select('srs.student_id')
+          .addSelect("count(srs.state)", "student_incident_count")
+          .innerJoin("roll", "roll", "srs.roll_id = roll.id")
+          .where('roll.completed_at >= :startDate', { startDate: format(lastWeek, "yyyy-MM-dd") })
+          .andWhere('roll.completed_at <= :endDate', { endDate: format(today, "yyyy-MM-dd") })
+          .andWhere('srs.state in (:...states)', {
+            states: params.roll_states.split(",")
+          })
+          .groupBy("srs.student_id")
+          .from(StudentRollState, "srs")
+
+      }, "s")
+      .where(condition, { ltmt: params.ltmt, incident_count: params.incidents })
+      .groupBy('s.srs_student_id')
+    return await query.getRawMany()
   }
 }
+

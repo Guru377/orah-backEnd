@@ -27,7 +27,9 @@ export class Group {
   })
   run_at: Date
 
-  @Column()
+  @Column({
+    nullable: true,
+  })
   student_count: number
 
   public prepareToUpdate(input: UpdateGroupInput) {
@@ -48,8 +50,6 @@ export class Group {
     if (input.roll_states !== undefined) this.roll_states = input.roll_states
     if (input.incidents !== undefined) this.incidents = input.incidents
     if (input.ltmt !== undefined) this.ltmt = input.ltmt
-    this.run_at = input.run_at
-    this.student_count = input.student_count
 
   }
 
