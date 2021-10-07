@@ -21,6 +21,7 @@ export class GroupController {
     // Task 1: 
 
     // Return the list of all groups
+    console.log("testing");
     return this.groupRepository.find()
 
 
